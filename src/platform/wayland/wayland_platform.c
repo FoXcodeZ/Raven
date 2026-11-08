@@ -420,6 +420,10 @@ struct rvn_pwindow_t {
 	struct wl_subsurface* subsurface;
 	int child_x, child_y;
 
+	/* the pointer lock of the relative mouse mode, kept in the list of the global state */
+	struct zwp_locked_pointer_v1* locked_pointer;
+	rvn_pwindow_t* locked_next;
+
 	/* size in logical units (what Wayland speaks) and in pixels (what the core speaks) */
 	int width, height;
 	int pixel_width, pixel_height;
@@ -490,6 +494,12 @@ static struct {
 	struct zwp_pointer_gesture_hold_v1* hold;
 	rvn_pwindow_t* gesture_window;
 	double pinch_scale;           /* the scale of the last update: the compositor gives it since the beginning */
+	/* the relative mouse mode (pointer-constraints-unstable-v1, relative-pointer-unstable-v1) */
+	struct zwp_pointer_constraints_v1* pointer_constraints;
+	struct zwp_relative_pointer_manager_v1* relative_pointer_manager;
+	struct zwp_relative_pointer_v1* relative_pointer;  /* of the wl_pointer of the seat */
+	rvn_pwindow_t* relative_window;                    /* the window its motion belongs to */
+	rvn_pwindow_t* locked_windows;                     /* windows with a zwp_locked_pointer_v1 */
 
 	/* fingers: the window each one came down on */
 	struct wl_touch* touch;
@@ -1332,6 +1342,99 @@ static void rvn_wl_gestures_stop(void) {
 }
 
 /* ---------------------------------------------------------------------------
+ *  Relative mouse mode
+ *
+ *  The mode locks the pointer to the surface of the window (pointer-
+ *  constraints-unstable-v1) and asks the compositor for its motion with no
+ *  bounds (relative-pointer-unstable-v1): what Rwindow_set_relative_mouse
+ *  turns on. Both protocols are optional globals: a compositor without them
+ *  leaves the mode unsupported, and the window keeps working with the pointer
+ *  it has.
+ * ------------------------------------------------------------------------- */
+
+static void rvn_wl_relative_motion(void* data, struct zwp_relative_pointer_v1* relative_pointer,
+	uint32_t utime_hi, uint32_t utime_lo, int32_t dx, int32_t dy, int32_t dx_unaccel, int32_t dy_unaccel) {
+	rvn_pwindow_t* window = g_wl.relative_window;
+	rvn_pevent_t event;
+	RVN_UNUSED(data); RVN_UNUSED(relative_pointer);
+	RVN_UNUSED(utime_hi); RVN_UNUSED(utime_lo); RVN_UNUSED(dx); RVN_UNUSED(dy);
+	if (!window) return;
+	/* (the compositor gives relative motion in logical units, like the position of
+	   a wl_pointer: no scale here, RVN_PEVENT_MOUSE_RELATIVE speaks logical too) */
+	memset(&event, 0, sizeof(event));
+	event.type = RVN_PEVENT_MOUSE_RELATIVE;
+	event.fx = (float)rvn_wl_fixed(dx_unaccel);
+	event.fy = (float)rvn_wl_fixed(dy_unaccel);
+	rvn_wl_emit(window, &event);
+}
+
+static const struct zwp_relative_pointer_v1_listener g_wl_relative_pointer_listener = { rvn_wl_relative_motion };
+
+/* The relative pointer belongs to the wl_pointer of the seat: it goes with it. */
+static void rvn_wl_relative_pointer_stop(void) {
+	if (g_wl.relative_pointer && !g_wl.failed) zwp_relative_pointer_v1_destroy(g_wl.relative_pointer);
+	g_wl.relative_pointer = NULL;
+	g_wl.relative_window = NULL;
+}
+
+static void rvn_wl_relative_pointer_start(rvn_pwindow_t* window) {
+	g_wl.relative_pointer = zwp_relative_pointer_manager_v1_get_relative_pointer(g_wl.relative_pointer_manager, g_wl.pointer);
+	zwp_relative_pointer_v1_add_listener(g_wl.relative_pointer, &g_wl_relative_pointer_listener, NULL);
+	g_wl.relative_window = window;
+}
+
+static void rvn_wl_locked_pointer_unlink(rvn_pwindow_t* window) {
+	rvn_pwindow_t** link = &g_wl.locked_windows;
+	while (*link && *link != window) link = &(*link)->locked_next;
+	if (*link) *link = window->locked_next;
+	window->locked_next = NULL;
+}
+
+/* Turns the mode off for the window: the cursor and the usual pointer events come back (the core shows the cursor). */
+static void rvn_wl_relative_stop(rvn_pwindow_t* window) {
+	if (window->locked_pointer) {
+		if (!g_wl.failed) zwp_locked_pointer_v1_destroy(window->locked_pointer);
+		window->locked_pointer = NULL;
+	}
+	rvn_wl_locked_pointer_unlink(window);
+	if (g_wl.relative_window == window) rvn_wl_relative_pointer_stop();
+}
+
+/* The pointer of the seat went away: the locks and the relative pointer go with it. */
+static void rvn_wl_relative_forget_pointer(void) {
+	while (g_wl.locked_windows) {
+		rvn_pwindow_t* window = g_wl.locked_windows;
+		g_wl.locked_windows = window->locked_next;
+		window->locked_next = NULL;
+		if (window->locked_pointer) zwp_locked_pointer_v1_destroy(window->locked_pointer);
+		window->locked_pointer = NULL;
+	}
+	rvn_wl_relative_pointer_stop();
+}
+
+static int rvn_wl_window_set_relative_mouse(rvn_pwindow_t* window, int enabled) {
+	if (!enabled) {
+		/* (always possible: the window system never refuses to give the pointer back) */
+		rvn_wl_relative_stop(window);
+		return R_TRUE;
+	}
+	if (!g_wl.pointer || !g_wl.pointer_constraints || !g_wl.relative_pointer_manager) return R_FALSE;
+	if (!window->locked_pointer) {
+		/* (persistent: the compositor keeps the lock across the focus changes the core takes care of) */
+		window->locked_pointer = zwp_pointer_constraints_v1_lock_pointer(g_wl.pointer_constraints, window->surface,
+			g_wl.pointer, NULL, ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
+		window->locked_next = g_wl.locked_windows;
+		g_wl.locked_windows = window;
+	}
+	if (g_wl.relative_window != window) {
+		/* (one relative pointer is enough: the motion is that of the locked window) */
+		rvn_wl_relative_pointer_stop();
+		rvn_wl_relative_pointer_start(window);
+	}
+	return R_TRUE;
+}
+
+/* ---------------------------------------------------------------------------
  *  Keyboard
  * ------------------------------------------------------------------------- */
 
@@ -1851,6 +1954,8 @@ static void rvn_wl_seat_capabilities(void* data, struct wl_seat* seat, uint32_t 
 		rvn_wl_gestures_start();
 	} else if (!(capabilities & WL_SEAT_CAPABILITY_POINTER) && g_wl.pointer) {
 		rvn_wl_gestures_stop();
+		/* (the lock and the relative pointer are those of this pointer) */
+		rvn_wl_relative_forget_pointer();
 		if (g_wl.cursor_shape) wp_cursor_shape_device_v1_destroy(g_wl.cursor_shape);
 		g_wl.cursor_shape = NULL;
 		if (wl_pointer_get_version(g_wl.pointer) >= 3) wl_pointer_release(g_wl.pointer);
@@ -2269,6 +2374,10 @@ static void rvn_wl_registry_global(void* data, struct wl_registry* registry, uin
 	} else if (strcmp(interface, "zwp_pointer_gestures_v1") == 0) {
 		RVN_BIND(g_wl.pointer_gestures, zwp_pointer_gestures_v1, 3);
 		rvn_wl_gestures_start();
+	} else if (strcmp(interface, "zwp_pointer_constraints_v1") == 0) {
+		RVN_BIND(g_wl.pointer_constraints, zwp_pointer_constraints_v1, 1);
+	} else if (strcmp(interface, "zwp_relative_pointer_manager_v1") == 0) {
+		RVN_BIND(g_wl.relative_pointer_manager, zwp_relative_pointer_manager_v1, 1);
 	}
 #undef RVN_BIND
 }
@@ -2632,6 +2741,8 @@ static void rvn_wl_window_destroy(rvn_pwindow_t* window) {
 	rvn_wl_forget_close(window);
 	if (g_wl.pointer_window == window) g_wl.pointer_window = NULL;
 	if (g_wl.gesture_window == window) g_wl.gesture_window = NULL;
+	/* (the pointer lock names the surface, and the relative pointer the window its motion goes to) */
+	rvn_wl_relative_stop(window);
 	for (i = 0; i < RVN_WL_MAX_TOUCHES; i++) if (g_wl.touches[i].window == window) g_wl.touches[i].window = NULL;
 	for (tool = g_wl.tools; tool; tool = tool->next) if (tool->window == window) tool->window = NULL;
 	if (g_wl.keyboard_window == window) {
@@ -3094,6 +3205,7 @@ const rvn_platform_t* rvn_platform_wayland(void) {
 		.window_center = rvn_wl_window_center,
 		.window_set_icon = rvn_wl_window_set_icon,
 		.window_set_cursor = rvn_wl_window_set_cursor,
+		.window_set_relative_mouse = rvn_wl_window_set_relative_mouse,
 		.window_get_native = rvn_wl_window_get_native,
 		.child_create = rvn_wl_child_create,
 		.child_set_rect = rvn_wl_child_set_rect,

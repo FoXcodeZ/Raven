@@ -69,6 +69,11 @@ struct zwp_pointer_gestures_v1;
 struct zwp_pointer_gesture_swipe_v1;
 struct zwp_pointer_gesture_pinch_v1;
 struct zwp_pointer_gesture_hold_v1;
+struct zwp_pointer_constraints_v1;
+struct zwp_locked_pointer_v1;
+struct zwp_confined_pointer_v1;
+struct zwp_relative_pointer_manager_v1;
+struct zwp_relative_pointer_v1;
 
 static const struct wl_interface rvn_wl_display_interface;
 static const struct wl_interface rvn_wl_registry_interface;
@@ -123,6 +128,11 @@ static const struct wl_interface rvn_zwp_pointer_gestures_v1_interface;
 static const struct wl_interface rvn_zwp_pointer_gesture_swipe_v1_interface;
 static const struct wl_interface rvn_zwp_pointer_gesture_pinch_v1_interface;
 static const struct wl_interface rvn_zwp_pointer_gesture_hold_v1_interface;
+static const struct wl_interface rvn_zwp_pointer_constraints_v1_interface;
+static const struct wl_interface rvn_zwp_locked_pointer_v1_interface;
+static const struct wl_interface rvn_zwp_confined_pointer_v1_interface;
+static const struct wl_interface rvn_zwp_relative_pointer_manager_v1_interface;
+static const struct wl_interface rvn_zwp_relative_pointer_v1_interface;
 
 static const struct wl_interface* rvn_types_wl_display_r_sync[] = { &rvn_wl_callback_interface };
 static const struct wl_interface* rvn_types_wl_display_r_get_registry[] = { &rvn_wl_registry_interface };
@@ -1120,6 +1130,75 @@ static const struct wl_interface rvn_zwp_pointer_gesture_hold_v1_interface = {
 	2, rvn_zwp_pointer_gesture_hold_v1_events
 };
 
+static const struct wl_interface* rvn_types_zwp_pointer_constraints_v1_r_lock_pointer[] = { &rvn_zwp_locked_pointer_v1_interface, &rvn_wl_surface_interface, &rvn_wl_pointer_interface, &rvn_wl_region_interface, NULL };
+static const struct wl_interface* rvn_types_zwp_pointer_constraints_v1_r_confine_pointer[] = { &rvn_zwp_confined_pointer_v1_interface, &rvn_wl_surface_interface, &rvn_wl_pointer_interface, &rvn_wl_region_interface, NULL };
+static const struct wl_message rvn_zwp_pointer_constraints_v1_requests[] = {
+	{ "destroy", "", NULL },
+	{ "lock_pointer", "noo?ou", rvn_types_zwp_pointer_constraints_v1_r_lock_pointer },
+	{ "confine_pointer", "noo?ou", rvn_types_zwp_pointer_constraints_v1_r_confine_pointer },
+};
+static const struct wl_interface rvn_zwp_pointer_constraints_v1_interface = {
+	"zwp_pointer_constraints_v1", 1,
+	3, rvn_zwp_pointer_constraints_v1_requests,
+	0, NULL
+};
+
+static const struct wl_interface* rvn_types_zwp_locked_pointer_v1_r_set_cursor_position_hint[] = { NULL, NULL };
+static const struct wl_interface* rvn_types_zwp_locked_pointer_v1_r_set_region[] = { &rvn_wl_region_interface };
+static const struct wl_message rvn_zwp_locked_pointer_v1_requests[] = {
+	{ "destroy", "", NULL },
+	{ "set_cursor_position_hint", "ff", rvn_types_zwp_locked_pointer_v1_r_set_cursor_position_hint },
+	{ "set_region", "?o", rvn_types_zwp_locked_pointer_v1_r_set_region },
+};
+static const struct wl_message rvn_zwp_locked_pointer_v1_events[] = {
+	{ "locked", "", NULL },
+	{ "unlocked", "", NULL },
+};
+static const struct wl_interface rvn_zwp_locked_pointer_v1_interface = {
+	"zwp_locked_pointer_v1", 1,
+	3, rvn_zwp_locked_pointer_v1_requests,
+	2, rvn_zwp_locked_pointer_v1_events
+};
+
+static const struct wl_interface* rvn_types_zwp_confined_pointer_v1_r_set_region[] = { &rvn_wl_region_interface };
+static const struct wl_message rvn_zwp_confined_pointer_v1_requests[] = {
+	{ "destroy", "", NULL },
+	{ "set_region", "?o", rvn_types_zwp_confined_pointer_v1_r_set_region },
+};
+static const struct wl_message rvn_zwp_confined_pointer_v1_events[] = {
+	{ "confined", "", NULL },
+	{ "unconfined", "", NULL },
+};
+static const struct wl_interface rvn_zwp_confined_pointer_v1_interface = {
+	"zwp_confined_pointer_v1", 1,
+	2, rvn_zwp_confined_pointer_v1_requests,
+	2, rvn_zwp_confined_pointer_v1_events
+};
+
+static const struct wl_interface* rvn_types_zwp_relative_pointer_manager_v1_r_get_relative_pointer[] = { &rvn_zwp_relative_pointer_v1_interface, &rvn_wl_pointer_interface };
+static const struct wl_message rvn_zwp_relative_pointer_manager_v1_requests[] = {
+	{ "destroy", "", NULL },
+	{ "get_relative_pointer", "no", rvn_types_zwp_relative_pointer_manager_v1_r_get_relative_pointer },
+};
+static const struct wl_interface rvn_zwp_relative_pointer_manager_v1_interface = {
+	"zwp_relative_pointer_manager_v1", 1,
+	2, rvn_zwp_relative_pointer_manager_v1_requests,
+	0, NULL
+};
+
+static const struct wl_message rvn_zwp_relative_pointer_v1_requests[] = {
+	{ "destroy", "", NULL },
+};
+static const struct wl_interface* rvn_types_zwp_relative_pointer_v1_e_relative_motion[] = { NULL, NULL, NULL, NULL, NULL, NULL };
+static const struct wl_message rvn_zwp_relative_pointer_v1_events[] = {
+	{ "relative_motion", "uuffff", rvn_types_zwp_relative_pointer_v1_e_relative_motion },
+};
+static const struct wl_interface rvn_zwp_relative_pointer_v1_interface = {
+	"zwp_relative_pointer_v1", 1,
+	1, rvn_zwp_relative_pointer_v1_requests,
+	1, rvn_zwp_relative_pointer_v1_events
+};
+
 enum wl_display_error {
 	WL_DISPLAY_ERROR_INVALID_OBJECT = 0,
 	WL_DISPLAY_ERROR_INVALID_METHOD = 1,
@@ -1616,6 +1695,13 @@ enum zwp_tablet_pad_v2_button_state {
 	ZWP_TABLET_PAD_V2_BUTTON_STATE_RELEASED = 0,
 	ZWP_TABLET_PAD_V2_BUTTON_STATE_PRESSED = 1,
 };
+enum zwp_pointer_constraints_v1_error {
+	ZWP_POINTER_CONSTRAINTS_V1_ERROR_ALREADY_CONSTRAINED = 1,
+};
+enum zwp_pointer_constraints_v1_lifetime {
+	ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_ONESHOT = 1,
+	ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT = 2,
+};
 
 struct wl_registry_listener {
 	void (*global)(void* data, struct wl_registry* wl_registry, uint32_t name, const char* interface_, uint32_t version);
@@ -1916,6 +2002,26 @@ struct zwp_pointer_gesture_hold_v1_listener {
 };
 static int zwp_pointer_gesture_hold_v1_add_listener(struct zwp_pointer_gesture_hold_v1* zwp_pointer_gesture_hold_v1, const struct zwp_pointer_gesture_hold_v1_listener* listener, void* data) {
 	return RVN_WL_ADD_LISTENER((struct wl_proxy*)zwp_pointer_gesture_hold_v1, (void (**)(void))listener, data);
+}
+struct zwp_locked_pointer_v1_listener {
+	void (*locked)(void* data, struct zwp_locked_pointer_v1* zwp_locked_pointer_v1);
+	void (*unlocked)(void* data, struct zwp_locked_pointer_v1* zwp_locked_pointer_v1);
+};
+static int zwp_locked_pointer_v1_add_listener(struct zwp_locked_pointer_v1* zwp_locked_pointer_v1, const struct zwp_locked_pointer_v1_listener* listener, void* data) {
+	return RVN_WL_ADD_LISTENER((struct wl_proxy*)zwp_locked_pointer_v1, (void (**)(void))listener, data);
+}
+struct zwp_confined_pointer_v1_listener {
+	void (*confined)(void* data, struct zwp_confined_pointer_v1* zwp_confined_pointer_v1);
+	void (*unconfined)(void* data, struct zwp_confined_pointer_v1* zwp_confined_pointer_v1);
+};
+static int zwp_confined_pointer_v1_add_listener(struct zwp_confined_pointer_v1* zwp_confined_pointer_v1, const struct zwp_confined_pointer_v1_listener* listener, void* data) {
+	return RVN_WL_ADD_LISTENER((struct wl_proxy*)zwp_confined_pointer_v1, (void (**)(void))listener, data);
+}
+struct zwp_relative_pointer_v1_listener {
+	void (*relative_motion)(void* data, struct zwp_relative_pointer_v1* zwp_relative_pointer_v1, uint32_t utime_hi, uint32_t utime_lo, int32_t dx, int32_t dy, int32_t dx_unaccel, int32_t dy_unaccel);
+};
+static int zwp_relative_pointer_v1_add_listener(struct zwp_relative_pointer_v1* zwp_relative_pointer_v1, const struct zwp_relative_pointer_v1_listener* listener, void* data) {
+	return RVN_WL_ADD_LISTENER((struct wl_proxy*)zwp_relative_pointer_v1, (void (**)(void))listener, data);
 }
 
 static void wl_display_set_user_data(struct wl_display* wl_display, void* data) { RVN_WL_SET_USER_DATA((struct wl_proxy*)wl_display, data); }
@@ -2616,6 +2722,59 @@ static void* zwp_pointer_gesture_hold_v1_get_user_data(struct zwp_pointer_gestur
 static uint32_t zwp_pointer_gesture_hold_v1_get_version(struct zwp_pointer_gesture_hold_v1* zwp_pointer_gesture_hold_v1) { return RVN_WL_GET_VERSION((struct wl_proxy*)zwp_pointer_gesture_hold_v1); }
 static void zwp_pointer_gesture_hold_v1_destroy(struct zwp_pointer_gesture_hold_v1* zwp_pointer_gesture_hold_v1) {
 	RVN_WL_MARSHAL((struct wl_proxy*)zwp_pointer_gesture_hold_v1, 0, NULL, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_pointer_gesture_hold_v1), RVN_WL_MARSHAL_FLAG_DESTROY);
+}
+
+static void zwp_pointer_constraints_v1_set_user_data(struct zwp_pointer_constraints_v1* zwp_pointer_constraints_v1, void* data) { RVN_WL_SET_USER_DATA((struct wl_proxy*)zwp_pointer_constraints_v1, data); }
+static void* zwp_pointer_constraints_v1_get_user_data(struct zwp_pointer_constraints_v1* zwp_pointer_constraints_v1) { return RVN_WL_GET_USER_DATA((struct wl_proxy*)zwp_pointer_constraints_v1); }
+static uint32_t zwp_pointer_constraints_v1_get_version(struct zwp_pointer_constraints_v1* zwp_pointer_constraints_v1) { return RVN_WL_GET_VERSION((struct wl_proxy*)zwp_pointer_constraints_v1); }
+static void zwp_pointer_constraints_v1_destroy(struct zwp_pointer_constraints_v1* zwp_pointer_constraints_v1) {
+	RVN_WL_MARSHAL((struct wl_proxy*)zwp_pointer_constraints_v1, 0, NULL, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_pointer_constraints_v1), RVN_WL_MARSHAL_FLAG_DESTROY);
+}
+static struct zwp_locked_pointer_v1* zwp_pointer_constraints_v1_lock_pointer(struct zwp_pointer_constraints_v1* zwp_pointer_constraints_v1, struct wl_surface* surface, struct wl_pointer* pointer, struct wl_region* region, uint32_t lifetime) {
+	return (struct zwp_locked_pointer_v1*)RVN_WL_MARSHAL((struct wl_proxy*)zwp_pointer_constraints_v1, 1, &rvn_zwp_locked_pointer_v1_interface, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_pointer_constraints_v1), 0, NULL, surface, pointer, region, lifetime);
+}
+static struct zwp_confined_pointer_v1* zwp_pointer_constraints_v1_confine_pointer(struct zwp_pointer_constraints_v1* zwp_pointer_constraints_v1, struct wl_surface* surface, struct wl_pointer* pointer, struct wl_region* region, uint32_t lifetime) {
+	return (struct zwp_confined_pointer_v1*)RVN_WL_MARSHAL((struct wl_proxy*)zwp_pointer_constraints_v1, 2, &rvn_zwp_confined_pointer_v1_interface, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_pointer_constraints_v1), 0, NULL, surface, pointer, region, lifetime);
+}
+
+static void zwp_locked_pointer_v1_set_user_data(struct zwp_locked_pointer_v1* zwp_locked_pointer_v1, void* data) { RVN_WL_SET_USER_DATA((struct wl_proxy*)zwp_locked_pointer_v1, data); }
+static void* zwp_locked_pointer_v1_get_user_data(struct zwp_locked_pointer_v1* zwp_locked_pointer_v1) { return RVN_WL_GET_USER_DATA((struct wl_proxy*)zwp_locked_pointer_v1); }
+static uint32_t zwp_locked_pointer_v1_get_version(struct zwp_locked_pointer_v1* zwp_locked_pointer_v1) { return RVN_WL_GET_VERSION((struct wl_proxy*)zwp_locked_pointer_v1); }
+static void zwp_locked_pointer_v1_destroy(struct zwp_locked_pointer_v1* zwp_locked_pointer_v1) {
+	RVN_WL_MARSHAL((struct wl_proxy*)zwp_locked_pointer_v1, 0, NULL, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_locked_pointer_v1), RVN_WL_MARSHAL_FLAG_DESTROY);
+}
+static void zwp_locked_pointer_v1_set_cursor_position_hint(struct zwp_locked_pointer_v1* zwp_locked_pointer_v1, int32_t surface_x, int32_t surface_y) {
+	RVN_WL_MARSHAL((struct wl_proxy*)zwp_locked_pointer_v1, 1, NULL, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_locked_pointer_v1), 0, surface_x, surface_y);
+}
+static void zwp_locked_pointer_v1_set_region(struct zwp_locked_pointer_v1* zwp_locked_pointer_v1, struct wl_region* region) {
+	RVN_WL_MARSHAL((struct wl_proxy*)zwp_locked_pointer_v1, 2, NULL, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_locked_pointer_v1), 0, region);
+}
+
+static void zwp_confined_pointer_v1_set_user_data(struct zwp_confined_pointer_v1* zwp_confined_pointer_v1, void* data) { RVN_WL_SET_USER_DATA((struct wl_proxy*)zwp_confined_pointer_v1, data); }
+static void* zwp_confined_pointer_v1_get_user_data(struct zwp_confined_pointer_v1* zwp_confined_pointer_v1) { return RVN_WL_GET_USER_DATA((struct wl_proxy*)zwp_confined_pointer_v1); }
+static uint32_t zwp_confined_pointer_v1_get_version(struct zwp_confined_pointer_v1* zwp_confined_pointer_v1) { return RVN_WL_GET_VERSION((struct wl_proxy*)zwp_confined_pointer_v1); }
+static void zwp_confined_pointer_v1_destroy(struct zwp_confined_pointer_v1* zwp_confined_pointer_v1) {
+	RVN_WL_MARSHAL((struct wl_proxy*)zwp_confined_pointer_v1, 0, NULL, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_confined_pointer_v1), RVN_WL_MARSHAL_FLAG_DESTROY);
+}
+static void zwp_confined_pointer_v1_set_region(struct zwp_confined_pointer_v1* zwp_confined_pointer_v1, struct wl_region* region) {
+	RVN_WL_MARSHAL((struct wl_proxy*)zwp_confined_pointer_v1, 1, NULL, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_confined_pointer_v1), 0, region);
+}
+
+static void zwp_relative_pointer_manager_v1_set_user_data(struct zwp_relative_pointer_manager_v1* zwp_relative_pointer_manager_v1, void* data) { RVN_WL_SET_USER_DATA((struct wl_proxy*)zwp_relative_pointer_manager_v1, data); }
+static void* zwp_relative_pointer_manager_v1_get_user_data(struct zwp_relative_pointer_manager_v1* zwp_relative_pointer_manager_v1) { return RVN_WL_GET_USER_DATA((struct wl_proxy*)zwp_relative_pointer_manager_v1); }
+static uint32_t zwp_relative_pointer_manager_v1_get_version(struct zwp_relative_pointer_manager_v1* zwp_relative_pointer_manager_v1) { return RVN_WL_GET_VERSION((struct wl_proxy*)zwp_relative_pointer_manager_v1); }
+static void zwp_relative_pointer_manager_v1_destroy(struct zwp_relative_pointer_manager_v1* zwp_relative_pointer_manager_v1) {
+	RVN_WL_MARSHAL((struct wl_proxy*)zwp_relative_pointer_manager_v1, 0, NULL, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_relative_pointer_manager_v1), RVN_WL_MARSHAL_FLAG_DESTROY);
+}
+static struct zwp_relative_pointer_v1* zwp_relative_pointer_manager_v1_get_relative_pointer(struct zwp_relative_pointer_manager_v1* zwp_relative_pointer_manager_v1, struct wl_pointer* pointer) {
+	return (struct zwp_relative_pointer_v1*)RVN_WL_MARSHAL((struct wl_proxy*)zwp_relative_pointer_manager_v1, 1, &rvn_zwp_relative_pointer_v1_interface, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_relative_pointer_manager_v1), 0, NULL, pointer);
+}
+
+static void zwp_relative_pointer_v1_set_user_data(struct zwp_relative_pointer_v1* zwp_relative_pointer_v1, void* data) { RVN_WL_SET_USER_DATA((struct wl_proxy*)zwp_relative_pointer_v1, data); }
+static void* zwp_relative_pointer_v1_get_user_data(struct zwp_relative_pointer_v1* zwp_relative_pointer_v1) { return RVN_WL_GET_USER_DATA((struct wl_proxy*)zwp_relative_pointer_v1); }
+static uint32_t zwp_relative_pointer_v1_get_version(struct zwp_relative_pointer_v1* zwp_relative_pointer_v1) { return RVN_WL_GET_VERSION((struct wl_proxy*)zwp_relative_pointer_v1); }
+static void zwp_relative_pointer_v1_destroy(struct zwp_relative_pointer_v1* zwp_relative_pointer_v1) {
+	RVN_WL_MARSHAL((struct wl_proxy*)zwp_relative_pointer_v1, 0, NULL, RVN_WL_GET_VERSION((struct wl_proxy*)zwp_relative_pointer_v1), RVN_WL_MARSHAL_FLAG_DESTROY);
 }
 
 #if defined(__GNUC__)
