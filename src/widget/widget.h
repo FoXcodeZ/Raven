@@ -826,6 +826,8 @@ struct rvn_window_t {
 	int click_count;
 	int click_button;
 	RCursor cursor;
+	/** R_TRUE while the relative mouse mode is on (Rwindow_set_relative_mouse), focus or not. */
+	int relative_mouse;
 	/** Custom header: the resize edge under the pointer, when the window system does not handle them itself. */
 	rvn_pregion_t edge;
 

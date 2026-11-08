@@ -229,7 +229,13 @@ typedef enum REventType{
 	/** A character was typed. `codepoint` holds the Unicode scalar value. */
 	R_EVENT_TEXT,
 	R_EVENT_FOCUS_GAINED,
-	R_EVENT_FOCUS_LOST
+	R_EVENT_FOCUS_LOST,
+	/**
+	 * The pointer moved while the window has the relative mouse mode on
+	 * (Rwindow_set_relative_mouse): from the previous event, with no bounds
+	 * of the screen. Only the event hook of the window sees it.
+	 */
+	R_EVENT_MOUSE_RELATIVE
 }REventType;
 
 /**
@@ -245,7 +251,7 @@ typedef struct REvent {
 	float x, y;
 	/** Cursor position relative to the widget receiving the event. */
 	float local_x, local_y;
-	/** Mouse movement since the previous event (R_EVENT_MOUSE_MOVE). */
+	/** Mouse movement since the previous event (R_EVENT_MOUSE_MOVE, R_EVENT_MOUSE_RELATIVE). */
 	float delta_x, delta_y;
 	/** Scroll amount in lines, positive = up / left (R_EVENT_MOUSE_WHEEL). */
 	float wheel_x, wheel_y;
@@ -547,6 +553,31 @@ extern "C" {
 	RAVEN_API int Rwindow_inject_drop(Rid window, float x, float y, const char* const* paths, int path_count, const char* text);
 
 	/**
+	 * @brief Locks the pointer to the window: the cursor is hidden and the
+	 * motion of the pointer comes as R_EVENT_MOUSE_RELATIVE to the event hook
+	 * of the window (Rwindow_set_event_hook), for a camera that turns without
+	 * running into the edges of the screen. The widgets never see it, and the
+	 * pointer events a widget would get from moving over the window stop.
+	 *
+	 * Losing the focus (the user switches to another window) gives the cursor
+	 * back to the window system and suspends the motion; gaining it back
+	 * resumes it, as long as the mode is on. Rwindow_get_relative_mouse says
+	 * R_TRUE all along. Turning it off brings the cursor and the usual pointer
+	 * events back.
+	 * @return R_TRUE when the window system can lock the pointer (the mode is
+	 * then on, or off, as asked); R_FALSE when it cannot, the mode staying off.
+	 */
+	RAVEN_API int Rwindow_set_relative_mouse(Rid window, int enabled);
+	/** @brief R_TRUE while the relative mouse mode is on (whether the window has the focus or not). */
+	RAVEN_API int Rwindow_get_relative_mouse(Rid window);
+	/**
+	 * @brief Relative motion (R_EVENT_MOUSE_RELATIVE) in logical units, as the
+	 * window system of a window with the relative mouse mode on would send it.
+	 * Dropped while the mode is off or the window has no focus.
+	 */
+	RAVEN_API void Rwindow_inject_relative_motion(Rid window, float delta_x, float delta_y);
+
+	/**
 	 * @brief Registers a keyboard shortcut active while the window has focus and
 	 * no widget handled the key.
 	 * @param action Name of the action to fire (see Raction_bind).
@@ -581,10 +612,12 @@ extern "C" {
 	RAVEN_API void Rwindow_set_tab_navigation(Rid window, int enabled);
 
 	/**
-	 * @brief Sees every input event of the window (mouse, wheel, keys, text)
-	 * before any widget, with `target` set to the widget under the pointer.
-	 * Returning R_TRUE consumes the event: the widgets do not get it. The
-	 * state read by Rwindow_is_key_down is updated either way.
+	 * @brief Sees every input event of the window (mouse, wheel, keys, text,
+	 * and the relative motion of a locked pointer) before any widget, with
+	 * `target` set to the widget under the pointer. Returning R_TRUE consumes
+	 * the event: the widgets do not get it. The state read by
+	 * Rwindow_is_key_down is updated either way. R_EVENT_MOUSE_RELATIVE only
+	 * comes here: it has no widget under it, and `target` is R_INVALID_ID.
 	 */
 	typedef int (*RWindowEventHook)(Rid window, const REvent* event, void* user_data);
 	RAVEN_API void Rwindow_set_event_hook(Rid window, RWindowEventHook hook, void* user_data);

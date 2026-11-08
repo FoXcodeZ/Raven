@@ -357,6 +357,25 @@ static void rvn_window_update_cursor(rvn_window_t* window) {
 	}
 }
 
+/*
+ * Relative mouse mode (Rwindow_set_relative_mouse): while it is on and the
+ * window has the focus, the cursor is hidden; otherwise the cursor the widget
+ * under the pointer asks for shows again.
+ */
+static void rvn_window_relative_cursor(rvn_window_t* window) {
+	if (window->dead || !window->platform) return;
+	if (window->relative_mouse && window->active) {
+		if (window->cursor != R_CURSOR_NONE) {
+			window->cursor = R_CURSOR_NONE;
+			g_rvn.platform->window_set_cursor(window->platform, R_CURSOR_NONE);
+		}
+		return;
+	}
+	/* (R_CURSOR_NONE: rvn_window_update_cursor sends the cursor under the pointer again) */
+	window->cursor = R_CURSOR_NONE;
+	rvn_window_update_cursor(window);
+}
+
 /* Recomputes the hovered widget for a cursor that did not move (after a layout). */
 static void rvn_window_refresh_hover(rvn_window_t* window) {
 	if (window->capture || !window->mouse_inside) return;
@@ -1409,6 +1428,22 @@ static int rvn_window_hook(rvn_window_t* window, REvent* event) {
 	return window->event_hook(window->id, event, window->event_hook_user) ? R_TRUE : R_FALSE;
 }
 
+/*
+ * The motion of a locked pointer: from the previous event, in logical units,
+ * without a place in the window. Only the hook of the window sees it (no
+ * widget has a place for it), and only while the mode is on and the window
+ * has the focus.
+ */
+static void rvn_window_relative_motion(rvn_window_t* window, float dx, float dy) {
+	REvent event;
+	if (!window->relative_mouse || !window->active || !window->event_hook) return;
+	event = rvn_window_event(window, R_EVENT_MOUSE_RELATIVE);
+	event.delta_x = dx;
+	event.delta_y = dy;
+	/* (called here rather than through rvn_window_hook: the motion has no widget under it to be the target) */
+	window->event_hook(window->id, &event, window->event_hook_user);
+}
+
 static void rvn_window_mouse_move(rvn_window_t* window, float x, float y) {
 	REvent event;
 	float dx = window->mouse_inside ? x - window->mouse_x : 0.0f;
@@ -1796,9 +1831,14 @@ void rvn_window_on_platform_event(const rvn_pevent_t* pevent) {
 			break;
 		case RVN_PEVENT_MOUSE_MOVE:
 			window->modifiers = pevent->modifiers;
+			/* (the pointer is locked: its motion comes as RVN_PEVENT_MOUSE_RELATIVE) */
+			if (window->relative_mouse && window->active) break;
 			/* (picking for the inspector: the window sees nothing of the pointer) */
 			if (rvn_inspector_pick_move(window, (float)pevent->x / scale, (float)pevent->y / scale)) break;
 			rvn_window_mouse_move(window, (float)pevent->x / scale, (float)pevent->y / scale);
+			break;
+		case RVN_PEVENT_MOUSE_RELATIVE:
+			rvn_window_relative_motion(window, pevent->fx, pevent->fy);
 			break;
 		case RVN_PEVENT_MOUSE_BUTTON:
 			window->modifiers = pevent->modifiers;
@@ -1835,6 +1875,8 @@ void rvn_window_on_platform_event(const rvn_pevent_t* pevent) {
 			}
 			window->active = pevent->focused;
 			window->needs_paint = R_TRUE;
+			/* the relative mouse mode gives the pointer back when the window loses the focus, and locks it again */
+			if (window->relative_mouse) rvn_window_relative_cursor(window);
 			/* the window the user works in takes the camera housing for its island */
 			rvn_window_notch_focus(window);
 			break;
@@ -2658,6 +2700,37 @@ int Rwindow_inject_drop(Rid id, float x, float y, const char* const* paths, int 
 	taken = rvn_window_drop(window, x, y, path_count > 0 ? paths : NULL, path_count > 0 ? path_count : 0, text);
 	rvn_dispatch_end();
 	return taken;
+}
+
+int Rwindow_set_relative_mouse(Rid id, int enabled) {
+	rvn_window_t* window = rvn_window_check(id, "Rwindow_set_relative_mouse");
+	if (!window) return R_FALSE;
+	/* (NULL: the window system cannot lock the pointer, as the null platform) */
+	if (!g_rvn.platform->window_set_relative_mouse) return R_FALSE;
+	if (!window->platform) return R_FALSE;
+	if (g_rvn.platform->window_set_relative_mouse(window->platform, enabled ? R_TRUE : R_FALSE)) {
+		window->relative_mouse = enabled ? R_TRUE : R_FALSE;
+		rvn_window_relative_cursor(window);
+		return R_TRUE;
+	}
+	/* the window system could not lock the pointer: the mode stays off */
+	if (window->relative_mouse) {
+		window->relative_mouse = R_FALSE;
+		rvn_window_relative_cursor(window);
+	}
+	return R_FALSE;
+}
+
+int Rwindow_get_relative_mouse(Rid id) {
+	rvn_window_t* window = rvn_window_check(id, "Rwindow_get_relative_mouse");
+	return window && window->relative_mouse ? R_TRUE : R_FALSE;
+}
+
+void Rwindow_inject_relative_motion(Rid id, float delta_x, float delta_y) {
+	rvn_window_t* window = rvn_window_inject_begin(id, __func__);
+	if (!window) return;
+	rvn_window_relative_motion(window, delta_x, delta_y);
+	rvn_dispatch_end();
 }
 
 void Rwindow_register_shortcut(Rid id, RKey key, Ruint modifiers, const char* action) {

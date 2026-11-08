@@ -92,7 +92,14 @@ typedef enum rvn_pevent_type_t {
 	/** The system asks the application to quit (Quit in the application menu of macOS, in the Dock). `user` may be NULL. */
 	RVN_PEVENT_QUIT,
 	/** A tray icon was clicked: `user` is the one given to tray_create (not a window), `button` an RMouseButton. */
-	RVN_PEVENT_TRAY
+	RVN_PEVENT_TRAY,
+	/**
+	 * The pointer moved while the window has the relative mouse mode on:
+	 * fx, fy are the motion since the previous event, in logical units, with
+	 * no bounds of the screen. The core gives it to the event hook only, and
+	 * ignores it while the window has no focus.
+	 */
+	RVN_PEVENT_MOUSE_RELATIVE
 } rvn_pevent_type_t;
 
 /**
@@ -306,6 +313,16 @@ typedef struct rvn_platform_t {
 	/** Optional (may be NULL). Icon from RGBA8 pixels; NULL rgba restores the default. */
 	void  (*window_set_icon)(rvn_pwindow_t* window, const uint8_t* rgba, int width, int height);
 	void  (*window_set_cursor)(rvn_pwindow_t* window, RCursor cursor);
+	/**
+	 * Optional (may be NULL: the window system cannot lock the pointer).
+	 * Relative mouse mode (Rwindow_set_relative_mouse): the pointer is locked
+	 * to the window, its motion has no bounds of the screen, and the cursor is
+	 * hidden by the core (window_set_cursor, R_CURSOR_NONE). The motion comes
+	 * back as RVN_PEVENT_MOUSE_RELATIVE. Losing the focus gives the pointer
+	 * back to the window system; gaining it locks it again, while the mode is
+	 * on. Returns R_FALSE when the pointer could not be locked.
+	 */
+	int   (*window_set_relative_mouse)(rvn_pwindow_t* window, int enabled);
 	void  (*window_get_native)(rvn_pwindow_t* window, RNativeWindow* native);
 
 	/** Child window used by native viewports. Destroyed with window_destroy. */

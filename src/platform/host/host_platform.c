@@ -35,6 +35,9 @@ static struct {
 	char* clipboard;
 } g_host;
 
+/** R_FALSE: the application's window system cannot lock the pointer (tests, as the null platform). */
+static int g_host_pointer_lock = R_TRUE;
+
 int rvn_host_platform_registered(void) {
 	return g_host_desc.registered;
 }
@@ -159,6 +162,17 @@ static void rvn_host_window_set_cursor(rvn_pwindow_t* window, RCursor cursor) {
 	if (g_host_desc.desc.set_cursor) g_host_desc.desc.set_cursor(window->id, cursor, g_host_desc.desc.user_data);
 }
 
+/*
+ * A host window is a surface of the application: there is no pointer to lock
+ * here. The application locks its own pointer and feeds the motion back
+ * through Rwindow_inject_relative_motion, so the mode is always supported.
+ */
+static int rvn_host_window_set_relative_mouse(rvn_pwindow_t* window, int enabled) {
+	RVN_UNUSED(window);
+	RVN_UNUSED(enabled);
+	return R_TRUE;
+}
+
 static void rvn_host_window_get_native(rvn_pwindow_t* window, RNativeWindow* native) {
 	RVN_UNUSED(window);
 	memset(native, 0, sizeof(*native));
@@ -257,6 +271,7 @@ const rvn_platform_t* rvn_platform_host(void) {
 		.window_begin_move = rvn_host_window_begin_move,
 		.window_begin_resize = rvn_host_window_begin_resize,
 		.window_set_cursor = rvn_host_window_set_cursor,
+		.window_set_relative_mouse = rvn_host_window_set_relative_mouse,
 		.window_set_backdrop = rvn_host_window_set_backdrop,
 		.window_set_opacity = rvn_host_window_set_opacity,
 		.window_get_native = rvn_host_window_get_native,
@@ -267,10 +282,26 @@ const rvn_platform_t* rvn_platform_host(void) {
 		.clipboard_set = rvn_host_clipboard_set,
 		.clipboard_get = rvn_host_clipboard_get
 	};
-	return &platform;
+	/* The tests ask for the window system of a platform that cannot lock the pointer (the null one). */
+	static rvn_platform_t without_pointer_lock;
+	if (g_host_pointer_lock) return &platform;
+	without_pointer_lock = platform;
+	without_pointer_lock.window_set_relative_mouse = NULL;
+	return &without_pointer_lock;
 }
 
 /* ---- public API (raven_host.h) ---- */
+
+/*
+ * Not public API: the tables of the tests. A window system that cannot lock
+ * the pointer (the null platform) has no window_set_relative_mouse, so the
+ * core answers R_FALSE; the host platform can be made to look the same, from
+ * before Rinit (the platform table is taken then).
+ */
+int rvn_host_platform_set_pointer_lock(int capable) {
+	g_host_pointer_lock = capable ? R_TRUE : R_FALSE;
+	return g_host_pointer_lock;
+}
 
 void Rhost_platform_register(const RHostPlatformDesc* desc) {
 	if (Ris_initialized()) {
