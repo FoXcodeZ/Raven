@@ -290,6 +290,10 @@ pub const R_EVENT_KEY_UP: REventType = 0x00C8;
 pub const R_EVENT_TEXT: REventType = 0x00C9;
 pub const R_EVENT_FOCUS_GAINED: REventType = 0x00CA;
 pub const R_EVENT_FOCUS_LOST: REventType = 0x00CB;
+/// The pointer moved while the window has the relative mouse mode on
+/// (Rwindow_set_relative_mouse): from the previous event, with no bounds
+/// of the screen. Only the event hook of the window sees it.
+pub const R_EVENT_MOUSE_RELATIVE: REventType = 0x00CC;
 
 /// Moments of a drag coming from another application (files from the file manager, text...).
 pub const RDropPhase = c_int;
@@ -1087,10 +1091,12 @@ pub const RDropCallback = ?*const fn (target: Rid, event: ?*const RDropEvent, us
 pub const RWindowCloseCallback = ?*const fn (window: Rid, user_data: ?*anyopaque) callconv(.C) c_int;
 /// Called after the window was resized. Sizes are in logical units.
 pub const RWindowResizeCallback = ?*const fn (window: Rid, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void;
-/// Sees every input event of the window (mouse, wheel, keys, text)
-/// before any widget, with `target` set to the widget under the pointer.
-/// Returning R_TRUE consumes the event: the widgets do not get it. The
-/// state read by Rwindow_is_key_down is updated either way.
+/// Sees every input event of the window (mouse, wheel, keys, text,
+/// and the relative motion of a locked pointer) before any widget, with
+/// `target` set to the widget under the pointer. Returning R_TRUE consumes
+/// the event: the widgets do not get it. The state read by
+/// Rwindow_is_key_down is updated either way. R_EVENT_MOUSE_RELATIVE only
+/// comes here: it has no widget under it, and `target` is R_INVALID_ID.
 pub const RWindowEventHook = ?*const fn (window: Rid, event: ?*const REvent, user_data: ?*anyopaque) callconv(.C) c_int;
 /// Return R_TRUE to take the finger: the library then neither clicks nor scrolls with it.
 pub const RTouchCallback = ?*const fn (widget: Rid, event: ?*const RTouchEvent, user_data: ?*anyopaque) callconv(.C) c_int;
@@ -1334,9 +1340,9 @@ pub const REvent = extern struct {
     local_x: f32 = 0,
     /// Cursor position relative to the widget receiving the event.
     local_y: f32 = 0,
-    /// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE).
+    /// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE, R_EVENT_MOUSE_RELATIVE).
     delta_x: f32 = 0,
-    /// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE).
+    /// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE, R_EVENT_MOUSE_RELATIVE).
     delta_y: f32 = 0,
     /// Scroll amount in lines, positive = up / left (R_EVENT_MOUSE_WHEEL).
     wheel_x: f32 = 0,
@@ -2018,6 +2024,26 @@ pub extern fn Rwindow_inject_text(window: Rid, text: ?[*:0]const u8) void;
 pub extern fn Rwindow_inject_drag(window: Rid, x: f32, y: f32, inside: c_int) c_int;
 /// Drops files and / or text at a position. Returns R_TRUE when a target took them.
 pub extern fn Rwindow_inject_drop(window: Rid, x: f32, y: f32, paths: ?[*]const ?[*:0]const u8, path_count: c_int, text: ?[*:0]const u8) c_int;
+/// Locks the pointer to the window: the cursor is hidden and the
+/// motion of the pointer comes as R_EVENT_MOUSE_RELATIVE to the event hook
+/// of the window (Rwindow_set_event_hook), for a camera that turns without
+/// running into the edges of the screen. The widgets never see it, and the
+/// pointer events a widget would get from moving over the window stop.
+///
+/// Losing the focus (the user switches to another window) gives the cursor
+/// back to the window system and suspends the motion; gaining it back
+/// resumes it, as long as the mode is on. Rwindow_get_relative_mouse says
+/// R_TRUE all along. Turning it off brings the cursor and the usual pointer
+/// events back.
+/// Returns: R_TRUE when the window system can lock the pointer (the mode is
+/// then on, or off, as asked); R_FALSE when it cannot, the mode staying off.
+pub extern fn Rwindow_set_relative_mouse(window: Rid, enabled: c_int) c_int;
+/// R_TRUE while the relative mouse mode is on (whether the window has the focus or not).
+pub extern fn Rwindow_get_relative_mouse(window: Rid) c_int;
+/// Relative motion (R_EVENT_MOUSE_RELATIVE) in logical units, as the
+/// window system of a window with the relative mouse mode on would send it.
+/// Dropped while the mode is off or the window has no focus.
+pub extern fn Rwindow_inject_relative_motion(window: Rid, delta_x: f32, delta_y: f32) void;
 /// R_TRUE while the key is held down in the window (cleared when the window loses the keyboard).
 pub extern fn Rwindow_is_key_down(window: Rid, key: RKey) c_int;
 /// R_TRUE while the mouse button is held down over (or captured by) the window.

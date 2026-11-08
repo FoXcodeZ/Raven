@@ -357,18 +357,19 @@ const (
 type REventType int32
 
 const (
-	R_EVENT_NONE         REventType = 0x00C0
-	R_EVENT_MOUSE_MOVE   REventType = 0x00C1
-	R_EVENT_MOUSE_DOWN   REventType = 0x00C2
-	R_EVENT_MOUSE_UP     REventType = 0x00C3
-	R_EVENT_MOUSE_WHEEL  REventType = 0x00C4
-	R_EVENT_MOUSE_ENTER  REventType = 0x00C5
-	R_EVENT_MOUSE_LEAVE  REventType = 0x00C6
-	R_EVENT_KEY_DOWN     REventType = 0x00C7
-	R_EVENT_KEY_UP       REventType = 0x00C8
-	R_EVENT_TEXT         REventType = 0x00C9
-	R_EVENT_FOCUS_GAINED REventType = 0x00CA
-	R_EVENT_FOCUS_LOST   REventType = 0x00CB
+	R_EVENT_NONE           REventType = 0x00C0
+	R_EVENT_MOUSE_MOVE     REventType = 0x00C1
+	R_EVENT_MOUSE_DOWN     REventType = 0x00C2
+	R_EVENT_MOUSE_UP       REventType = 0x00C3
+	R_EVENT_MOUSE_WHEEL    REventType = 0x00C4
+	R_EVENT_MOUSE_ENTER    REventType = 0x00C5
+	R_EVENT_MOUSE_LEAVE    REventType = 0x00C6
+	R_EVENT_KEY_DOWN       REventType = 0x00C7
+	R_EVENT_KEY_UP         REventType = 0x00C8
+	R_EVENT_TEXT           REventType = 0x00C9
+	R_EVENT_FOCUS_GAINED   REventType = 0x00CA
+	R_EVENT_FOCUS_LOST     REventType = 0x00CB
+	R_EVENT_MOUSE_RELATIVE REventType = 0x00CC
 )
 
 // RDropPhase: Moments of a drag coming from another application (files from the file manager, text...).
@@ -1567,6 +1568,31 @@ func WindowInjectText(window ID, text string) {
 // Returns: R_TRUE when a drop at this position would be accepted.
 func WindowInjectDrag(window ID, x float32, y float32, inside int) int {
 	return int(C.Rwindow_inject_drag(C.Rid(window), C.float(x), C.float(y), C.int(inside)))
+}
+
+// WindowSetRelativeMouse: Locks the pointer to the window: the cursor is hidden and the motion of the pointer
+// comes as R_EVENT_MOUSE_RELATIVE to the event hook of the window (Rwindow_set_event_hook), for a camera that
+// turns without running into the edges of the screen. The widgets never see it, and the pointer events a
+// widget would get from moving over the window stop. Losing the focus (the user switches to another window)
+// gives the cursor back to the window system and suspends the motion; gaining it back resumes it, as long as
+// the mode is on. Rwindow_get_relative_mouse says R_TRUE all along. Turning it off brings the cursor and the
+// usual pointer events back. Returns: R_TRUE when the window system can lock the pointer (the mode is then
+// on, or off, as asked); R_FALSE when it cannot, the mode staying off.
+func WindowSetRelativeMouse(window ID, enabled int) int {
+	return int(C.Rwindow_set_relative_mouse(C.Rid(window), C.int(enabled)))
+}
+
+// WindowGetRelativeMouse: R_TRUE while the relative mouse mode is on (whether the window has the focus or
+// not).
+func WindowGetRelativeMouse(window ID) int {
+	return int(C.Rwindow_get_relative_mouse(C.Rid(window)))
+}
+
+// WindowInjectRelativeMotion: Relative motion (R_EVENT_MOUSE_RELATIVE) in logical units, as the window system
+// of a window with the relative mouse mode on would send it. Dropped while the mode is off or the window has
+// no focus.
+func WindowInjectRelativeMotion(window ID, delta_x float32, delta_y float32) {
+	C.Rwindow_inject_relative_motion(C.Rid(window), C.float(delta_x), C.float(delta_y))
 }
 
 // WindowIsKeyDown: R_TRUE while the key is held down in the window (cleared when the window loses the

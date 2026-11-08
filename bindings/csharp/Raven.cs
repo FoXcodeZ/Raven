@@ -353,6 +353,12 @@ namespace Raven
         R_EVENT_TEXT = 0x00C9,
         R_EVENT_FOCUS_GAINED = 0x00CA,
         R_EVENT_FOCUS_LOST = 0x00CB,
+        /// <summary>
+        /// The pointer moved while the window has the relative mouse mode on
+        /// (Rwindow_set_relative_mouse): from the previous event, with no bounds
+        /// of the screen. Only the event hook of the window sees it.
+        /// </summary>
+        R_EVENT_MOUSE_RELATIVE = 0x00CC,
     }
 
     /// <summary>
@@ -1805,11 +1811,11 @@ namespace Raven
         /// </summary>
         public float local_y;
         /// <summary>
-        /// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE).
+        /// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE, R_EVENT_MOUSE_RELATIVE).
         /// </summary>
         public float delta_x;
         /// <summary>
-        /// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE).
+        /// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE, R_EVENT_MOUSE_RELATIVE).
         /// </summary>
         public float delta_y;
         /// <summary>
@@ -2539,10 +2545,12 @@ namespace Raven
     public delegate void RWindowResizeCallback(uint window, int width, int height, IntPtr user_data);
 
     /// <summary>
-    /// Sees every input event of the window (mouse, wheel, keys, text)
-    /// before any widget, with `target` set to the widget under the pointer.
-    /// Returning R_TRUE consumes the event: the widgets do not get it. The
-    /// state read by Rwindow_is_key_down is updated either way.
+    /// Sees every input event of the window (mouse, wheel, keys, text,
+    /// and the relative motion of a locked pointer) before any widget, with
+    /// `target` set to the widget under the pointer. Returning R_TRUE consumes
+    /// the event: the widgets do not get it. The state read by
+    /// Rwindow_is_key_down is updated either way. R_EVENT_MOUSE_RELATIVE only
+    /// comes here: it has no widget under it, and `target` is R_INVALID_ID.
     /// </summary>
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate int RWindowEventHook(uint window, ref REvent @event, IntPtr user_data);
@@ -3694,6 +3702,38 @@ namespace Raven
         /// </summary>
         [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
         public static extern int Rwindow_inject_drop(uint window, float x, float y, [MarshalAs(UnmanagedType.LPArray, ArraySubType = Utf8.Str)] string[] paths, int path_count, [MarshalAs(Utf8.Str)] string text);
+
+        /// <summary>
+        /// Locks the pointer to the window: the cursor is hidden and the
+        /// motion of the pointer comes as R_EVENT_MOUSE_RELATIVE to the event hook
+        /// of the window (Rwindow_set_event_hook), for a camera that turns without
+        /// running into the edges of the screen. The widgets never see it, and the
+        /// pointer events a widget would get from moving over the window stop.
+        /// 
+        /// Losing the focus (the user switches to another window) gives the cursor
+        /// back to the window system and suspends the motion; gaining it back
+        /// resumes it, as long as the mode is on. Rwindow_get_relative_mouse says
+        /// R_TRUE all along. Turning it off brings the cursor and the usual pointer
+        /// events back.
+        /// Returns: R_TRUE when the window system can lock the pointer (the mode is
+        /// then on, or off, as asked); R_FALSE when it cannot, the mode staying off.
+        /// </summary>
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int Rwindow_set_relative_mouse(uint window, int enabled);
+
+        /// <summary>
+        /// R_TRUE while the relative mouse mode is on (whether the window has the focus or not).
+        /// </summary>
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int Rwindow_get_relative_mouse(uint window);
+
+        /// <summary>
+        /// Relative motion (R_EVENT_MOUSE_RELATIVE) in logical units, as the
+        /// window system of a window with the relative mouse mode on would send it.
+        /// Dropped while the mode is off or the window has no focus.
+        /// </summary>
+        [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void Rwindow_inject_relative_motion(uint window, float delta_x, float delta_y);
 
         /// <summary>
         /// R_TRUE while the key is held down in the window (cleared when the window loses the keyboard).

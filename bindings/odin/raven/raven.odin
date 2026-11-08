@@ -301,6 +301,10 @@ R_EVENT_KEY_UP :: 0x00C8
 R_EVENT_TEXT :: 0x00C9
 R_EVENT_FOCUS_GAINED :: 0x00CA
 R_EVENT_FOCUS_LOST :: 0x00CB
+// The pointer moved while the window has the relative mouse mode on
+// (Rwindow_set_relative_mouse): from the previous event, with no bounds
+// of the screen. Only the event hook of the window sees it.
+R_EVENT_MOUSE_RELATIVE :: 0x00CC
 
 // Moments of a drag coming from another application (files from the file manager, text...).
 RDropPhase :: i32
@@ -1098,10 +1102,12 @@ RDropCallback :: #type proc "c" (target: Rid, event: ^RDropEvent, user_data: raw
 RWindowCloseCallback :: #type proc "c" (window: Rid, user_data: rawptr) -> i32
 // Called after the window was resized. Sizes are in logical units.
 RWindowResizeCallback :: #type proc "c" (window: Rid, width: i32, height: i32, user_data: rawptr)
-// Sees every input event of the window (mouse, wheel, keys, text)
-// before any widget, with `target` set to the widget under the pointer.
-// Returning R_TRUE consumes the event: the widgets do not get it. The
-// state read by Rwindow_is_key_down is updated either way.
+// Sees every input event of the window (mouse, wheel, keys, text,
+// and the relative motion of a locked pointer) before any widget, with
+// `target` set to the widget under the pointer. Returning R_TRUE consumes
+// the event: the widgets do not get it. The state read by
+// Rwindow_is_key_down is updated either way. R_EVENT_MOUSE_RELATIVE only
+// comes here: it has no widget under it, and `target` is R_INVALID_ID.
 RWindowEventHook :: #type proc "c" (window: Rid, event: ^REvent, user_data: rawptr) -> i32
 // Return R_TRUE to take the finger: the library then neither clicks nor scrolls with it.
 RTouchCallback :: #type proc "c" (widget: Rid, event: ^RTouchEvent, user_data: rawptr) -> i32
@@ -1345,9 +1351,9 @@ REvent :: struct {
 	local_x: f32,
 	// Cursor position relative to the widget receiving the event.
 	local_y: f32,
-	// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE).
+	// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE, R_EVENT_MOUSE_RELATIVE).
 	delta_x: f32,
-	// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE).
+	// Mouse movement since the previous event (R_EVENT_MOUSE_MOVE, R_EVENT_MOUSE_RELATIVE).
 	delta_y: f32,
 	// Scroll amount in lines, positive = up / left (R_EVENT_MOUSE_WHEEL).
 	wheel_x: f32,
@@ -2031,6 +2037,26 @@ foreign lib {
 	Rwindow_inject_drag :: proc(window: Rid, x: f32, y: f32, inside: i32) -> i32 ---
 	// Drops files and / or text at a position. Returns R_TRUE when a target took them.
 	Rwindow_inject_drop :: proc(window: Rid, x: f32, y: f32, paths: [^]cstring, path_count: i32, text: cstring) -> i32 ---
+	// Locks the pointer to the window: the cursor is hidden and the
+	// motion of the pointer comes as R_EVENT_MOUSE_RELATIVE to the event hook
+	// of the window (Rwindow_set_event_hook), for a camera that turns without
+	// running into the edges of the screen. The widgets never see it, and the
+	// pointer events a widget would get from moving over the window stop.
+	//
+	// Losing the focus (the user switches to another window) gives the cursor
+	// back to the window system and suspends the motion; gaining it back
+	// resumes it, as long as the mode is on. Rwindow_get_relative_mouse says
+	// R_TRUE all along. Turning it off brings the cursor and the usual pointer
+	// events back.
+	// Returns: R_TRUE when the window system can lock the pointer (the mode is
+	// then on, or off, as asked); R_FALSE when it cannot, the mode staying off.
+	Rwindow_set_relative_mouse :: proc(window: Rid, enabled: i32) -> i32 ---
+	// R_TRUE while the relative mouse mode is on (whether the window has the focus or not).
+	Rwindow_get_relative_mouse :: proc(window: Rid) -> i32 ---
+	// Relative motion (R_EVENT_MOUSE_RELATIVE) in logical units, as the
+	// window system of a window with the relative mouse mode on would send it.
+	// Dropped while the mode is off or the window has no focus.
+	Rwindow_inject_relative_motion :: proc(window: Rid, delta_x: f32, delta_y: f32) ---
 	// R_TRUE while the key is held down in the window (cleared when the window loses the keyboard).
 	Rwindow_is_key_down :: proc(window: Rid, key: RKey) -> i32 ---
 	// R_TRUE while the mouse button is held down over (or captured by) the window.

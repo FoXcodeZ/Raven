@@ -466,6 +466,12 @@ public final class R {
     public static final int R_EVENT_TEXT = 0x00C9;
     public static final int R_EVENT_FOCUS_GAINED = 0x00CA;
     public static final int R_EVENT_FOCUS_LOST = 0x00CB;
+    /**
+     * The pointer moved while the window has the relative mouse mode on
+     * (Rwindow_set_relative_mouse): from the previous event, with no bounds
+     * of the screen. Only the event hook of the window sees it.
+     */
+    public static final int R_EVENT_MOUSE_RELATIVE = 0x00CC;
 
     // RDropPhase: Moments of a drag coming from another application (files from the file manager, text...).
     /**
@@ -1998,13 +2004,13 @@ public final class R {
         public REvent local_y(float value) { s.set(JAVA_FLOAT, 24, value); return this; }
 
         /**
-         * Mouse movement since the previous event (R_EVENT_MOUSE_MOVE).
+         * Mouse movement since the previous event (R_EVENT_MOUSE_MOVE, R_EVENT_MOUSE_RELATIVE).
          */
         public float delta_x() { return s.get(JAVA_FLOAT, 28); }
         public REvent delta_x(float value) { s.set(JAVA_FLOAT, 28, value); return this; }
 
         /**
-         * Mouse movement since the previous event (R_EVENT_MOUSE_MOVE).
+         * Mouse movement since the previous event (R_EVENT_MOUSE_MOVE, R_EVENT_MOUSE_RELATIVE).
          */
         public float delta_y() { return s.get(JAVA_FLOAT, 32); }
         public REvent delta_y(float value) { s.set(JAVA_FLOAT, 32, value); return this; }
@@ -3798,10 +3804,12 @@ public final class R {
     }
 
     /**
-     * Sees every input event of the window (mouse, wheel, keys, text)
-     * before any widget, with `target` set to the widget under the pointer.
-     * Returning R_TRUE consumes the event: the widgets do not get it. The
-     * state read by Rwindow_is_key_down is updated either way.
+     * Sees every input event of the window (mouse, wheel, keys, text,
+     * and the relative motion of a locked pointer) before any widget, with
+     * `target` set to the widget under the pointer. Returning R_TRUE consumes
+     * the event: the widgets do not get it. The state read by
+     * Rwindow_is_key_down is updated either way. R_EVENT_MOUSE_RELATIVE only
+     * comes here: it has no widget under it, and `target` is R_INVALID_ID.
      */
     @FunctionalInterface
     public interface RWindowEventHook {
@@ -7031,6 +7039,67 @@ public final class R {
             MemorySegment text$ = text == null ? MemorySegment.NULL : utf8($a, text);
             int $r = (int) $h.invokeExact(window, x, y, paths$, (int) (paths$.byteSize() / ADDRESS.byteSize()), text$);
             return $r;
+        } catch (Throwable $t) {
+            throw fail($t);
+        }
+    }
+
+    private static MethodHandle Rwindow_set_relative_mouse$;
+
+    /**
+     * Locks the pointer to the window: the cursor is hidden and the
+     * motion of the pointer comes as R_EVENT_MOUSE_RELATIVE to the event hook
+     * of the window (Rwindow_set_event_hook), for a camera that turns without
+     * running into the edges of the screen. The widgets never see it, and the
+     * pointer events a widget would get from moving over the window stop.
+     *
+     * Losing the focus (the user switches to another window) gives the cursor
+     * back to the window system and suspends the motion; gaining it back
+     * resumes it, as long as the mode is on. Rwindow_get_relative_mouse says
+     * R_TRUE all along. Turning it off brings the cursor and the usual pointer
+     * events back.
+     * Returns: R_TRUE when the window system can lock the pointer (the mode is
+     * then on, or off, as asked); R_FALSE when it cannot, the mode staying off.
+     */
+    public static int Rwindow_set_relative_mouse(int window, int enabled) {
+        MethodHandle $h = Rwindow_set_relative_mouse$;
+        if ($h == null) Rwindow_set_relative_mouse$ = $h = find("Rwindow_set_relative_mouse", FunctionDescriptor.of(JAVA_INT, JAVA_INT, JAVA_INT));
+        try {
+            int $r = (int) $h.invokeExact(window, enabled);
+            return $r;
+        } catch (Throwable $t) {
+            throw fail($t);
+        }
+    }
+
+    private static MethodHandle Rwindow_get_relative_mouse$;
+
+    /**
+     * R_TRUE while the relative mouse mode is on (whether the window has the focus or not).
+     */
+    public static int Rwindow_get_relative_mouse(int window) {
+        MethodHandle $h = Rwindow_get_relative_mouse$;
+        if ($h == null) Rwindow_get_relative_mouse$ = $h = find("Rwindow_get_relative_mouse", FunctionDescriptor.of(JAVA_INT, JAVA_INT));
+        try {
+            int $r = (int) $h.invokeExact(window);
+            return $r;
+        } catch (Throwable $t) {
+            throw fail($t);
+        }
+    }
+
+    private static MethodHandle Rwindow_inject_relative_motion$;
+
+    /**
+     * Relative motion (R_EVENT_MOUSE_RELATIVE) in logical units, as the
+     * window system of a window with the relative mouse mode on would send it.
+     * Dropped while the mode is off or the window has no focus.
+     */
+    public static void Rwindow_inject_relative_motion(int window, float delta_x, float delta_y) {
+        MethodHandle $h = Rwindow_inject_relative_motion$;
+        if ($h == null) Rwindow_inject_relative_motion$ = $h = find("Rwindow_inject_relative_motion", FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT, JAVA_FLOAT));
+        try {
+            $h.invokeExact(window, delta_x, delta_y);
         } catch (Throwable $t) {
             throw fail($t);
         }

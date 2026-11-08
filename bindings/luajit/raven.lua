@@ -242,6 +242,7 @@ typedef enum REventType {
 	R_EVENT_TEXT = 201,
 	R_EVENT_FOCUS_GAINED = 202,
 	R_EVENT_FOCUS_LOST = 203,
+	R_EVENT_MOUSE_RELATIVE = 204,
 } REventType;
 typedef enum RDropPhase {
 	R_DROP_ENTER = 224,
@@ -1172,6 +1173,9 @@ void Rwindow_inject_key(Rid window, RKey key, int pressed, Ruint modifiers);
 void Rwindow_inject_text(Rid window, const char* text);
 int Rwindow_inject_drag(Rid window, float x, float y, int inside);
 int Rwindow_inject_drop(Rid window, float x, float y, const char* const* paths, int path_count, const char* text);
+int Rwindow_set_relative_mouse(Rid window, int enabled);
+int Rwindow_get_relative_mouse(Rid window);
+void Rwindow_inject_relative_motion(Rid window, float delta_x, float delta_y);
 int Rwindow_is_key_down(Rid window, RKey key);
 int Rwindow_is_mouse_button_down(Rid window, RMouseButton button);
 Ruint Rwindow_get_modifiers(Rid window);

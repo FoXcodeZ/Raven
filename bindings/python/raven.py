@@ -515,6 +515,7 @@ class REventType(enum.IntEnum):
     R_EVENT_TEXT = 0x00C9
     R_EVENT_FOCUS_GAINED = 0x00CA
     R_EVENT_FOCUS_LOST = 0x00CB
+    R_EVENT_MOUSE_RELATIVE = 0x00CC
 
 R_EVENT_NONE = REventType.R_EVENT_NONE
 R_EVENT_MOUSE_MOVE = REventType.R_EVENT_MOUSE_MOVE
@@ -528,6 +529,7 @@ R_EVENT_KEY_UP = REventType.R_EVENT_KEY_UP
 R_EVENT_TEXT = REventType.R_EVENT_TEXT
 R_EVENT_FOCUS_GAINED = REventType.R_EVENT_FOCUS_GAINED
 R_EVENT_FOCUS_LOST = REventType.R_EVENT_FOCUS_LOST
+R_EVENT_MOUSE_RELATIVE = REventType.R_EVENT_MOUSE_RELATIVE
 
 class RDropPhase(enum.IntEnum):
     """Moments of a drag coming from another application (files from the file manager, text...)."""
@@ -3562,6 +3564,47 @@ def Rwindow_inject_drop(window, x, y, paths, text):
     paths_ = [_s(item_) for item_ in (paths or [])]
     paths_array = (ctypes.c_char_p * len(paths_))(*paths_)
     return _lib.Rwindow_inject_drop(window, x, y, paths_array, len(paths_), _s(text))
+
+
+_lib.Rwindow_set_relative_mouse.argtypes = [ctypes.c_uint32, ctypes.c_int]
+_lib.Rwindow_set_relative_mouse.restype = ctypes.c_int
+
+
+def Rwindow_set_relative_mouse(window, enabled):
+    """Locks the pointer to the window: the cursor is hidden and the
+    motion of the pointer comes as R_EVENT_MOUSE_RELATIVE to the event hook
+    of the window (Rwindow_set_event_hook), for a camera that turns without
+    running into the edges of the screen. The widgets never see it, and the
+    pointer events a widget would get from moving over the window stop.
+    
+    Losing the focus (the user switches to another window) gives the cursor
+    back to the window system and suspends the motion; gaining it back
+    resumes it, as long as the mode is on. Rwindow_get_relative_mouse says
+    R_TRUE all along. Turning it off brings the cursor and the usual pointer
+    events back.
+    Returns: R_TRUE when the window system can lock the pointer (the mode is
+    then on, or off, as asked); R_FALSE when it cannot, the mode staying off."""
+    return _lib.Rwindow_set_relative_mouse(window, enabled)
+
+
+_lib.Rwindow_get_relative_mouse.argtypes = [ctypes.c_uint32]
+_lib.Rwindow_get_relative_mouse.restype = ctypes.c_int
+
+
+def Rwindow_get_relative_mouse(window):
+    """R_TRUE while the relative mouse mode is on (whether the window has the focus or not)."""
+    return _lib.Rwindow_get_relative_mouse(window)
+
+
+_lib.Rwindow_inject_relative_motion.argtypes = [ctypes.c_uint32, ctypes.c_float, ctypes.c_float]
+_lib.Rwindow_inject_relative_motion.restype = None
+
+
+def Rwindow_inject_relative_motion(window, delta_x, delta_y):
+    """Relative motion (R_EVENT_MOUSE_RELATIVE) in logical units, as the
+    window system of a window with the relative mouse mode on would send it.
+    Dropped while the mode is off or the window has no focus."""
+    _lib.Rwindow_inject_relative_motion(window, delta_x, delta_y)
 
 
 _lib.Rwindow_is_key_down.argtypes = [ctypes.c_uint32, ctypes.c_int]

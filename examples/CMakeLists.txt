@@ -19,6 +19,7 @@
 #                    tags made by the application, themes, the accent of the cover, an island
 #   viewport_vulkan  a Vulkan scene shown in the UI (offscreen image + in-pass draw)
 #   viewport_opengl  an OpenGL scene shown in a native child window
+#   relative_mouse   the relative mouse mode (a locked pointer), M toggles it
 
 function(raven_add_example name)
 	add_executable(raven_${name} ${ARGN} common/example.h)
@@ -50,6 +51,7 @@ raven_add_example(music music/main.c music/library.c music/tags.c music/music.h
 	music/ui/collection.xml music/ui/search.xml music/ui/library.xml music/ui/settings.xml
 	music/ui/nowplaying.xml music/ui/player.xml music/ui/island.xml
 	music/themes/nocturne.xml music/themes/aurora.xml music/themes/daylight.xml music/themes/styles.xml)
+raven_add_example(relative_mouse relative_mouse/main.c)
 
 # Web pages in the interface: needs the optional library (RAVEN_BUILD_WEB).
 if(TARGET raven_web)

@@ -1889,6 +1889,29 @@ public:
 	/// Drops files and / or text at a position. Returns R_TRUE when a target took them.
 	int inject_drop(float x, float y, const char*const* paths, int path_count, const char* text) const { return Rwindow_inject_drop(id_, x, y, paths, path_count, text); }
 
+	/// Locks the pointer to the window: the cursor is hidden and the
+	/// motion of the pointer comes as R_EVENT_MOUSE_RELATIVE to the event hook
+	/// of the window (Rwindow_set_event_hook), for a camera that turns without
+	/// running into the edges of the screen. The widgets never see it, and the
+	/// pointer events a widget would get from moving over the window stop.
+	///
+	/// Losing the focus (the user switches to another window) gives the cursor
+	/// back to the window system and suspends the motion; gaining it back
+	/// resumes it, as long as the mode is on. Rwindow_get_relative_mouse says
+	/// R_TRUE all along. Turning it off brings the cursor and the usual pointer
+	/// events back.
+	/// Returns: R_TRUE when the window system can lock the pointer (the mode is
+	/// then on, or off, as asked); R_FALSE when it cannot, the mode staying off.
+	int set_relative_mouse(int enabled) const { return Rwindow_set_relative_mouse(id_, enabled); }
+
+	/// R_TRUE while the relative mouse mode is on (whether the window has the focus or not).
+	int get_relative_mouse() const { return Rwindow_get_relative_mouse(id_); }
+
+	/// Relative motion (R_EVENT_MOUSE_RELATIVE) in logical units, as the
+	/// window system of a window with the relative mouse mode on would send it.
+	/// Dropped while the mode is off or the window has no focus.
+	void inject_relative_motion(float delta_x, float delta_y) const { Rwindow_inject_relative_motion(id_, delta_x, delta_y); }
+
 	/// R_TRUE while the key is held down in the window (cleared when the window loses the keyboard).
 	int is_key_down(RKey key) const { return Rwindow_is_key_down(id_, key); }
 
