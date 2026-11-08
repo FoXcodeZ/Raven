@@ -95,6 +95,8 @@ static struct {
 	int dnd_x, dnd_y;
 	int wake_pipe[2];
 	Cursor cursors[RVN_X11_CURSOR_COUNT];
+	/** R_CURSOR_NONE: a cursor that shows nothing (the relative mouse mode, a game hiding the pointer). */
+	Cursor blank_cursor;
 	/* never mapped: owns the clipboard selection and receives pasted data */
 	Window helper;
 	char* clipboard;
@@ -134,6 +136,8 @@ static struct {
 	Atom dnd_property;
 	/** The window a pen was last seen over (XInput 2), or NULL. */
 	rvn_pwindow_t* pen_window;
+	/** The window in the relative mouse mode: the raw motion of the pointer is sent to it, or NULL. */
+	rvn_pwindow_t* relative_window;
 } g_x11;
 
 /* ---------------------------------------------------------------------------
@@ -320,6 +324,16 @@ static int rvn_x11_init(rvn_pevent_handler_t handler, rvn_pregion_handler_t regi
 	}
 
 	for (i = 0; i < RVN_X11_CURSOR_COUNT; i++) g_x11.cursors[i] = XCreateFontCursor(g_x11.display, shapes[i]);
+	{
+		/* (nothing drawn: a transparent pixel as both the source and the mask of the cursor) */
+		Pixmap empty = XCreatePixmap(g_x11.display, g_x11.root, 1, 1, 1);
+		XColor nothing;
+		memset(&nothing, 0, sizeof(nothing));
+		if (empty) {
+			g_x11.blank_cursor = XCreatePixmapCursor(g_x11.display, empty, empty, &nothing, &nothing, 0, 0);
+			XFreePixmap(g_x11.display, empty);
+		}
+	}
 
 	memset(&attributes, 0, sizeof(attributes));
 	attributes.event_mask = PropertyChangeMask;
@@ -347,6 +361,7 @@ static void rvn_x11_shutdown(void) {
 	for (i = 0; i < RVN_X11_CURSOR_COUNT; i++) {
 		if (g_x11.cursors[i]) XFreeCursor(g_x11.display, g_x11.cursors[i]);
 	}
+	if (g_x11.blank_cursor) XFreeCursor(g_x11.display, g_x11.blank_cursor);
 	if (g_x11.helper) XDestroyWindow(g_x11.display, g_x11.helper);
 	for (i = 0; i < RVN_X11_INCR_MAX_TRANSFERS; i++) rvn_free(g_x11.transfers[i].data);
 	if (g_x11.input_method) XCloseIM(g_x11.input_method);
@@ -483,6 +498,11 @@ static void rvn_x11_window_destroy(rvn_pwindow_t* window) {
 	if (window->input_context) XDestroyIC(window->input_context);
 	if (!window->is_child) XDeleteContext(g_x11.display, window->handle, g_x11.context);
 	if (g_x11.pen_window == window) g_x11.pen_window = NULL;
+	if (g_x11.relative_window == window) {
+		/* (the window is going away: the pointer must not stay locked to it) */
+		g_x11.relative_window = NULL;
+		XUngrabPointer(g_x11.display, CurrentTime);
+	}
 	XDestroyWindow(g_x11.display, window->handle);
 	if (window->colormap) XFreeColormap(g_x11.display, window->colormap);
 	XFlush(g_x11.display);
@@ -911,9 +931,63 @@ static void rvn_x11_drag_to(int root_x, int root_y) {
 
 static void rvn_x11_window_set_cursor(rvn_pwindow_t* window, RCursor cursor) {
 	int index = (int)cursor - (int)R_CURSOR_ARROW;
+	/* (R_CURSOR_NONE: no pointer at all) */
+	if (cursor == R_CURSOR_NONE && g_x11.blank_cursor) {
+		XDefineCursor(g_x11.display, window->handle, g_x11.blank_cursor);
+		XFlush(g_x11.display);
+		return;
+	}
 	if (index < 0 || index >= RVN_X11_CURSOR_COUNT) index = 0;
 	XDefineCursor(g_x11.display, window->handle, g_x11.cursors[index]);
 	XFlush(g_x11.display);
+}
+
+/* ---------------------------------------------------------------------------
+ *  Relative mouse mode (pointer grabbed to the window, XInput 2 raw motion)
+ * ------------------------------------------------------------------------- */
+
+/* The pointer is locked to the window: no bound of the screen, and its events come to the window alone. */
+static void rvn_x11_relative_grab(rvn_pwindow_t* window, int grab) {
+	if (!grab) {
+		XUngrabPointer(g_x11.display, CurrentTime);
+	} else {
+		XGrabPointer(g_x11.display, window->handle, True,
+			ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+			GrabModeAsync, GrabModeAsync, window->handle /* confine_to */, None, CurrentTime);
+	}
+	XFlush(g_x11.display);
+}
+
+/* The unaccelerated motion of the pointer, in device units: it becomes logical units as positions do. */
+static void rvn_x11_relative_motion(rvn_pwindow_t* window, double dx, double dy) {
+	rvn_pevent_t event;
+	if (!g_x11.handler) return;
+	memset(&event, 0, sizeof(event));
+	event.type = RVN_PEVENT_MOUSE_RELATIVE;
+	event.fx = (float)dx / g_x11.scale;
+	event.fy = (float)dy / g_x11.scale;
+	rvn_x11_emit(window, &event);
+}
+
+static int rvn_x11_window_set_relative_mouse(rvn_pwindow_t* window, int enabled) {
+	/* (without the raw motion of XInput 2 the pointer could be locked, but its motion would still stop at the screen edge) */
+	if (!rvn_x11_xi2_available()) return R_FALSE;
+	if (g_x11.relative_window && g_x11.relative_window != window) {
+		XUngrabPointer(g_x11.display, CurrentTime);
+		g_x11.relative_window = NULL;
+	}
+	if (!enabled) {
+		g_x11.relative_window = NULL;
+		rvn_x11_relative_grab(window, R_FALSE);
+		return R_TRUE;
+	}
+	if (g_x11.relative_window != window) {
+		g_x11.relative_window = window;
+		/* (the motion of the pointer comes from the root window, and only while it is asked for) */
+		rvn_x11_xi2_select_raw(g_x11.display, g_x11.root);
+	}
+	rvn_x11_relative_grab(window, R_TRUE);
+	return R_TRUE;
 }
 
 static void rvn_x11_window_get_native(rvn_pwindow_t* window, RNativeWindow* native) {
@@ -1598,6 +1672,11 @@ static void rvn_x11_process(XEvent* xevent) {
 	if (xevent->type == GenericEvent) {
 		rvn_x11_touch_t touch;
 		int kind = rvn_x11_xi2_event(g_x11.display, xevent, &touch);
+		/* (the pointer is locked: its motion has no bounds and comes without a place in the window) */
+		if (kind == 4) {
+			if (g_x11.relative_window) rvn_x11_relative_motion(g_x11.relative_window, touch.dx, touch.dy);
+			return;
+		}
 		if (kind >= 2 && (window = rvn_x11_find(touch.window)) != NULL) {
 			memset(&event, 0, sizeof(event));
 			event.phase = touch.phase;
@@ -1737,12 +1816,16 @@ static void rvn_x11_process(XEvent* xevent) {
 		case FocusIn:
 			if (window->input_context) XSetICFocus(window->input_context);
 			if (window->urgent) rvn_x11_set_urgent(window, R_FALSE);
+			/* the relative mouse mode locks the pointer again when the window comes back */
+			if (g_x11.relative_window == window) rvn_x11_relative_grab(window, R_TRUE);
 			event.type = RVN_PEVENT_FOCUS;
 			event.focused = R_TRUE;
 			rvn_x11_emit(window, &event);
 			break;
 		case FocusOut:
 			if (window->input_context) XUnsetICFocus(window->input_context);
+			/* the pointer goes back to the window system (Alt+Tab); the mode stays on, so FocusIn locks it again */
+			if (g_x11.relative_window == window) rvn_x11_relative_grab(window, R_FALSE);
 			/* key releases will go to another window */
 			memset(g_x11.keys_down, 0, sizeof(g_x11.keys_down));
 			event.type = RVN_PEVENT_FOCUS;
@@ -1843,6 +1926,7 @@ const rvn_platform_t* rvn_platform_x11(void) {
 		.window_set_picture_in_picture = rvn_x11_window_set_picture_in_picture,
 		.window_center = rvn_x11_window_center,
 		.window_set_cursor = rvn_x11_window_set_cursor,
+		.window_set_relative_mouse = rvn_x11_window_set_relative_mouse,
 		.window_get_native = rvn_x11_window_get_native,
 		.child_create = rvn_x11_child_create,
 		.child_set_rect = rvn_x11_child_set_rect,

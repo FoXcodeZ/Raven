@@ -48,6 +48,8 @@
 #define RVN_XIValuatorClass     2
 #define RVN_XITouchClass        8
 #define RVN_XIDependentTouch    2
+/* (the mode of a valuator: Absolute, the other being Relative) */
+#define RVN_XIAbsolute          0
 #define RVN_XIPointerEmulated   (1 << 16)
 
 typedef struct { int deviceid; int mask_len; unsigned char* mask; } rvn_xi_event_mask_t;
@@ -181,6 +183,8 @@ typedef struct {
 	int eraser;
 	/** A touchpad: its fingers move the pointer, they are not fingers on the window. */
 	int dependent_touch;
+	/** The axes are positions, not motion (a pen, a touch screen): their raw values move nothing. */
+	int absolute;
 	/** Valuator numbers, -1 when the device has none. */
 	int pressure, tilt_x, tilt_y, rotation;
 	double pressure_min, pressure_max;
@@ -232,11 +236,25 @@ static void rvn_xi2_symbol(const char* name, void* function) {
 	memcpy(function, &symbol, sizeof(void*));
 }
 
+/* The raw events of every device on the root window, and the devices that come and go. */
+static void rvn_xi2_select_root(Display* display, Window root) {
+	rvn_xi_event_mask_t mask;
+	unsigned char bits[(RVN_XI_LASTEVENT >> 3) + 1];
+	if (!g_xi2.select_events) return;
+	memset(bits, 0, sizeof(bits));
+	rvn_xi2_set(bits, RVN_XI_RawMotion);
+	rvn_xi2_set(bits, RVN_XI_RawButtonPress);
+	rvn_xi2_set(bits, RVN_XI_RawButtonRelease);
+	rvn_xi2_set(bits, RVN_XI_HierarchyChanged);
+	mask.deviceid = RVN_XIAllDevices;
+	mask.mask_len = (int)sizeof(bits);
+	mask.mask = bits;
+	g_xi2.select_events(display, root, &mask, 1);
+}
+
 void rvn_x11_xi2_init(Display* display, Window root) {
 	/* (2.4 for the gestures of trackpads; the server answers with what it has, 2.2 for the fingers) */
 	int event, error, major = 2, minor = 4;
-	rvn_xi_event_mask_t mask;
-	unsigned char bits[(RVN_XI_LASTEVENT >> 3) + 1];
 
 	memset(&g_xi2, 0, sizeof(g_xi2));
 	if (!XQueryExtension(display, "XInputExtension", &g_xi2.opcode, &event, &error)) return;
@@ -260,16 +278,16 @@ void rvn_x11_xi2_init(Display* display, Window root) {
 	g_xi2.tilt_y_label = XInternAtom(display, "Abs Tilt Y", False);
 	g_xi2.rotation_label = XInternAtom(display, "Abs Wheel", False);
 
-	/* the raw events of every device, for the pressure of pens; and the devices that come and go */
-	memset(bits, 0, sizeof(bits));
-	rvn_xi2_set(bits, RVN_XI_RawMotion);
-	rvn_xi2_set(bits, RVN_XI_RawButtonPress);
-	rvn_xi2_set(bits, RVN_XI_RawButtonRelease);
-	rvn_xi2_set(bits, RVN_XI_HierarchyChanged);
-	mask.deviceid = RVN_XIAllDevices;
-	mask.mask_len = (int)sizeof(bits);
-	mask.mask = bits;
-	g_xi2.select_events(display, root, &mask, 1);
+	/* the raw events of every device, for the pressure of pens and the motion of a locked pointer */
+	rvn_xi2_select_root(display, root);
+}
+
+int rvn_x11_xi2_available(void) {
+	return g_xi2.library && g_xi2.select_events ? R_TRUE : R_FALSE;
+}
+
+void rvn_x11_xi2_select_raw(Display* display, Window root) {
+	rvn_xi2_select_root(display, root);
 }
 
 void rvn_x11_xi2_shutdown(void) {
@@ -327,6 +345,8 @@ static rvn_xi2_device_t* rvn_xi2_device(Display* display, int id) {
 				continue;
 			}
 			if (valuator->type != RVN_XIValuatorClass) continue;
+			/* (the X axis says it for the device: a pen or a touch screen has positions, not motion) */
+			if (valuator->number == 0 && valuator->mode == RVN_XIAbsolute) device->absolute = R_TRUE;
 			if (valuator->label == g_xi2.pressure_label) {
 				device->pressure = valuator->number;
 				device->pressure_min = valuator->min;
@@ -361,6 +381,17 @@ static float rvn_xi2_fraction(double value, double min, double max) {
 /* -1..1 of a range made into degrees (tablets report about 60 degrees at the ends) */
 static float rvn_xi2_degrees(double value, double min, double max) {
 	return (rvn_xi2_fraction(value, min, max) * 2.0f - 1.0f) * 60.0f;
+}
+
+/* The unaccelerated motion of a pointer in a raw event, in device units: its axes are the valuators 0 and 1. */
+static int rvn_xi2_raw_motion(const rvn_xi_raw_event_t* raw, double* dx, double* dy) {
+	int found = R_FALSE;
+	*dx = 0.0;
+	*dy = 0.0;
+	if (!raw->raw_values) return R_FALSE;
+	if (rvn_xi2_value(&raw->valuators, 0, dx)) found = R_TRUE;
+	if (rvn_xi2_value(&raw->valuators, 1, dy)) found = R_TRUE;
+	return found;
 }
 
 static void rvn_xi2_raw(Display* display, const rvn_xi_raw_event_t* raw) {
@@ -399,9 +430,20 @@ int rvn_x11_xi2_event(Display* display, XEvent* xevent, rvn_x11_touch_t* touch) 
 	switch (cookie->evtype) {
 		case RVN_XI_RawMotion:
 		case RVN_XI_RawButtonPress:
-		case RVN_XI_RawButtonRelease:
-			rvn_xi2_raw(display, (const rvn_xi_raw_event_t*)cookie->data);
+		case RVN_XI_RawButtonRelease: {
+			const rvn_xi_raw_event_t* raw = (const rvn_xi_raw_event_t*)cookie->data;
+			double dx, dy;
+			rvn_xi2_raw(display, raw);
+			/* (the motion of a pointer that has one: for the relative mouse mode)
+			   (only the copy of the slave device is taken: since XI 2.1 the one of its master carries the same motion) */
+			if (cookie->evtype == RVN_XI_RawMotion && raw->deviceid == raw->sourceid && !(raw->flags & RVN_XIPointerEmulated) &&
+				!rvn_xi2_device(display, raw->sourceid)->absolute && rvn_xi2_raw_motion(raw, &dx, &dy)) {
+				touch->dx = (float)dx;
+				touch->dy = (float)dy;
+				handled = 4;
+			}
 			break;
+		}
 		case RVN_XI_HierarchyChanged:
 			/* devices came or went: learnt again */
 			g_xi2.device_count = 0;

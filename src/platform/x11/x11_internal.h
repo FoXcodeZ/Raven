@@ -41,9 +41,16 @@ typedef struct rvn_x11_pen_t {
 /** Opens libXi when there is one; nothing happens without it. */
 void rvn_x11_xi2_init(Display* display, Window root);
 void rvn_x11_xi2_shutdown(void);
+/** R_TRUE when XInput 2 is there: the raw motion of the pointer (the relative mouse mode needs it). */
+int  rvn_x11_xi2_available(void);
+/** Asks for the raw events of the root window again (they are what the relative mouse mode reads). */
+void rvn_x11_xi2_select_raw(Display* display, Window root);
 /** The window receives fingers as such. */
 void rvn_x11_xi2_select(Display* display, Window window);
-/** A GenericEvent: 0 when not one of XInput 2, 1 when taken, 2 when it is a finger, 3 a gesture of a trackpad (*touch filled). */
+/**
+ * A GenericEvent: 0 when not one of XInput 2, 1 when taken, 2 when it is a finger, 3 a gesture of a
+ * trackpad, 4 the raw motion of a pointer (its deltas in device units in dx, dy) (*touch filled).
+ */
 int  rvn_x11_xi2_event(Display* display, XEvent* xevent, rvn_x11_touch_t* touch);
 /** R_TRUE when the core pointer event of this moment came from a pen: its pressure, tilt and buttons. */
 int  rvn_x11_xi2_pen(Time time, rvn_x11_pen_t* pen);
