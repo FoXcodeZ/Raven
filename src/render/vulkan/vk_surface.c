@@ -157,6 +157,20 @@ void rvn_vk_wait_frames(void) {
 	}
 }
 
+/*
+ * A fence only covers the rendering of a frame, not its presentation: when the
+ * swapchain of a window is made again, the queue may still be presenting an
+ * image of the old one (and holding the semaphore it was shown with). Waiting
+ * for the device covers that; it is put under the queue lock, since the queue
+ * may be shared with the application. A resize is rare: the cost is acceptable.
+ */
+static void rvn_vk_wait_present(void) {
+	if (!rvn_vk_usable() || !rvn_vk.DeviceWaitIdle) return;
+	rvn_vk_queue_lock();
+	rvn_vk.DeviceWaitIdle(g_vk.device);
+	rvn_vk_queue_unlock();
+}
+
 /* ---------------------------------------------------------------------------
  *  Swapchain
  * ------------------------------------------------------------------------- */
@@ -252,6 +266,8 @@ int rvn_vk_swapchain_create(rvn_vk_surface_t* surface, uint32_t width, uint32_t 
 
 	/* the previous images may still be in use by submitted frames */
 	rvn_vk_wait_frames();
+	/* ... and by the presentation of the last one, which no fence covers */
+	rvn_vk_wait_present();
 	/* the offscreen images of glass have the size of the swapchain: they are made again on demand */
 	rvn_vk_glass_release(surface);
 
@@ -387,6 +403,8 @@ static int rvn_vk_frame_create(rvn_vk_frame_t* frame) {
 static void rvn_vk_surface_release(rvn_vk_surface_t* surface) {
 	uint32_t i;
 	rvn_vk_wait_frames();
+	/* the swapchain and its semaphores are safe to destroy only with an idle queue */
+	rvn_vk_wait_present();
 	for (i = 0; i < RVN_VK_FRAMES; i++) {
 		rvn_vk_frame_t* frame = &surface->frames[i];
 		rvn_vk_buffer_destroy(&frame->instances);
